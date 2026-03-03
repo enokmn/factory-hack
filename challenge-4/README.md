@@ -150,10 +150,10 @@ The dashboard will start in your browser and show the resources
 <details>
 <summary>Problem: <code>aspire</code> / <code>aspire run</code> is not found</summary>
 
-If the `aspire` command isn’t available in your shell, install it and restart your shell session:
+If the `aspire` command isn’t available in your shell, run the repo setup script and then restart your shell session:
 
 ```bash
-curl -fsSL https://aspire.dev/install.sh | bash -s
+bash .devcontainer/setup-dotnet.sh
 ```
 
 Then restart the shell (so the updated PATH is picked up).
