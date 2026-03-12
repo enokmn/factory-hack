@@ -468,6 +468,26 @@ aspire run
 - Hele workflowen er sekvensiell: output fra én agent → input til neste
 - `TextOnlyAgentExecutor` stripper MCP tool history mellom agenter (workaround for SDK-deserialiseringsissues)
 
+### Bugfix: Named agents vs Assistants API (agent_id)
+
+Python-workflowen (`agents.py`) brukte `AzureAIAgentClient` med `agent_id="AnomalyClassificationAgent"`, men `AzureAIAgentClient` bruker underliggende `AgentsClient` (OpenAI Assistants API) som krever ID-er med `asst_`-prefix.
+
+Våre agenter er opprettet med `create_version()` (named agents) som har ID-er som `AnomalyClassificationAgent:2` — disse er IKKE kompatible med Assistants API.
+
+**Fix:** Erstattet `AzureAIAgentClient` med direkte bruk av `AIProjectClient.get_openai_client().responses.create()` med agent references:
+```python
+# Riktig måte å kalle named Foundry agents:
+openai_client = project_client.get_openai_client()
+conversation = openai_client.conversations.create()
+response = openai_client.responses.create(
+    conversation=conversation.id,
+    input=prompt,
+    extra_body={"agent": {"name": "AnomalyClassificationAgent", "type": "agent_reference"}},
+)
+```
+
+**Testet:** Workflow returnerer 200 OK med korrekt Anomaly Classification + Fault Diagnosis output.
+
 ### Bugfix: Blank frontend (VITE_API_URL)
 
 Frontenden viste blank side fordi `VITE_API_URL` ble satt til C#-typenavnet `Aspire.Hosting.ApplicationModel.EndpointReference` i stedet for en faktisk URL.
