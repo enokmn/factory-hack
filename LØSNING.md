@@ -1,7 +1,7 @@
 # Factory Hack — Komplett løsningsdokumentasjon
 
 **Team 8** | Atea AI Agent Hackathon | 12. mars 2026
-**Repo:** https://github.com/enokmn/factory-hack
+**Repo:** https://github.com/<ditt-brukernavn>/factory-hack
 
 ---
 
@@ -29,7 +29,7 @@
 
 ```bash
 # 1. Klon repo
-cd /tmp && git clone https://github.com/enokmn/factory-hack.git
+cd /tmp && git clone https://github.com/<ditt-brukernavn>/factory-hack.git
 cd /tmp/factory-hack
 
 # 2. Fiks .azure-rettigheter (om nødvendig på macOS)
@@ -37,7 +37,7 @@ sudo chown -R $(whoami):staff ~/.azure/
 
 # 3. Logg inn på Azure
 az login --use-device-code
-# Bruker: hackathonuser8@AteaCloudDemosNorway.onmicrosoft.com
+# Bruker: <din-bruker>@AteaCloudDemosNorway.onmicrosoft.com
 # Subscription: factory_hack_subscription
 
 # 4. Python virtual environment (påkrevd på macOS pga. PEP 668)
@@ -47,7 +47,7 @@ pip install -r requirements.txt
 
 # 5. Hent alle nøkler og endepunkter
 cd challenge-0
-echo "hackathonuser8-rg" | bash get-keys.sh
+echo "<din-bruker>-rg" | bash get-keys.sh
 cat ../.env  # verifiser at alle variabler er satt
 
 # 6. Eksportér miljøvariabler (KJØR DETTE I HVER NY TERMINAL)
@@ -77,11 +77,11 @@ bash seed-data.sh
 **Tidsbruk:** ca. 15 minutter
 
 ### Hva ble gjort
-1. Forket repo til https://github.com/enokmn/factory-hack
+1. Forket repo til https://github.com/<ditt-brukernavn>/factory-hack
 2. Valgte å jobbe **lokalt** (ikke Codespaces) — raskere og mer fleksibelt
 3. Installerte Azure CLI via Homebrew
 4. Logget inn med hackathon-bruker via device code
-5. Bekreftet at resource group `hackathonuser8-rg` (francecentral) var provisjonert
+5. Bekreftet at resource group `<din-bruker>-rg` (francecentral) var provisjonert
 6. Kjørte `get-keys.sh` → genererte `.env` med alle nøkler og endepunkter
 7. Opprettet Python venv og installerte avhengigheter
 8. Seedet data: 9 Cosmos DB-containere, wiki-filer til Blob Storage, APIM-proxyer
@@ -90,7 +90,7 @@ bash seed-data.sh
 - **Task 4** (Deploy resources) — allerede utført av arrangør
 - **Task 7** (Assign permissions) — allerede utført av arrangør
 
-### Azure-ressurser (hackathonuser8-rg)
+### Azure-ressurser (<din-bruker>-rg)
 
 | Tjeneste | Ressursnavn |
 |----------|-------------|
