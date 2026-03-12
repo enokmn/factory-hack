@@ -392,60 +392,74 @@ def diagnosis_condition(msg) -> bool:
 # --- Main Workflow Function ---
 
 
+async def _call_foundry_agent(openai_client, agent_name: str, input_text: str) -> str:
+    """Call a named Foundry agent using the OpenAI responses API with agent reference."""
+    logger.info(f"Calling Foundry agent '{agent_name}' with input: {input_text[:200]}...")
+    conversation = openai_client.conversations.create()
+    response = openai_client.responses.create(
+        conversation=conversation.id,
+        input=input_text,
+        extra_body={"agent": {"name": agent_name, "type": "agent_reference"}},
+    )
+    output = response.output_text
+    logger.info(f"Agent '{agent_name}' responded: {output[:200]}...")
+    return output
+
+
 async def run_factory_workflow(machine_id: str, telemetry: list):
     """
     Creates and runs the Factory Analysis Workflow.
 
-    AnomalyDetectionAgent + FaultDiagnosisAgent are hosted in Foundry Agent Service.
-    We reference them by Agent ID; any tool/MCP calls happen server-side in the managed service.
+    AnomalyDetectionAgent + FaultDiagnosisAgent are hosted in Foundry Agent Service
+    and called via OpenAI responses API with agent references (named agents).
     """
+    from azure.ai.projects import AIProjectClient
+    from azure.identity import DefaultAzureCredential as SyncDefaultAzureCredential
 
     project_endpoint = _require_env("AZURE_AI_PROJECT_ENDPOINT")
-    #anomaly_agent_id = _require_env("ANOMALY_AGENT_ID")
-   # fault_agent_id = _require_env("FAULT_DIAGNOSIS_AGENT_ID")
-    anomaly_agent_id = "AnomalyClassificationAgent"
-    fault_agent_id="FaultDiagnosisAgent"
     repair_planner_url = os.getenv("REPAIR_PLANNER_AGENT_URL")
 
-    credential = DefaultAzureCredential()
+    # Use sync AIProjectClient to get openai_client (Foundry named agents API)
+    sync_credential = SyncDefaultAzureCredential()
+    project_client = AIProjectClient(endpoint=project_endpoint, credential=sync_credential)
+    openai_client = project_client.get_openai_client()
+
+    outputs = []
     try:
-        async with AzureAIAgentClient(
-            project_endpoint=project_endpoint,
-            credential=credential,
-            agent_id=anomaly_agent_id,
-            should_cleanup_agent=False,
-        ) as anomaly_client, AzureAIAgentClient(
-            project_endpoint=project_endpoint,
-            credential=credential,
-            agent_id=fault_agent_id,
-            should_cleanup_agent=False,
-        ) as fault_client:
-            anomaly_agent = anomaly_client.create_agent(name="AnomalyClassificationAgent")
-            fault_agent = fault_client.create_agent(name="FaultDiagnosisAgent")
+        # Step 1: Anomaly Classification
+        anomaly_prompt = f"Classify the following anomalies for machine {machine_id}: {telemetry}"
+        anomaly_result = await _call_foundry_agent(openai_client, "AnomalyClassificationAgent", anomaly_prompt)
+        outputs.append(anomaly_result)
 
-            # Build the workflow
-            logger.info("Building workflow with hosted Foundry agents by ID...")
-            builder = WorkflowBuilder()
+        # Step 2: Fault Diagnosis (conditional — only if anomaly detected)
+        if diagnosis_condition_text(anomaly_result):
+            fault_result = await _call_foundry_agent(openai_client, "FaultDiagnosisAgent", anomaly_result)
+            outputs.append(fault_result)
+        else:
+            logger.info("No anomaly detected — skipping Fault Diagnosis")
+            return outputs
 
-            builder.register_executor(lambda: RequestProcessor(id="init"), name="RequestProcessor")
-            builder.register_agent(lambda: anomaly_agent, name="AnomalyAgent", output_response=True)
-            builder.register_agent(lambda: fault_agent, name="FaultAgent", output_response=True)
+        # Step 3: Repair Planner (A2A, if configured)
+        if repair_planner_url:
+            try:
+                repair_agent = await get_a2a_agent(server_url=repair_planner_url)
+                # Use agent framework to call A2A
+                from agent_framework import ChatMessage, ChatOptions, Role, TextContent
+                repair_msg = ChatMessage(role=Role.USER, items=[TextContent(text=fault_result)])
+                repair_response = await repair_agent.get_response([repair_msg])
+                repair_text = repair_response.text if hasattr(repair_response, 'text') else str(repair_response)
+                outputs.append(repair_text)
+                logger.info(f"RepairPlanner responded: {repair_text[:200]}...")
+            except Exception as e:
+                logger.warning(f"RepairPlanner A2A failed: {e}")
+                outputs.append(f"RepairPlanner error: {e}")
 
-            if repair_planner_url:
-                repair_planner_agent = await get_a2a_agent(server_url=repair_planner_url)
-                builder.register_agent(
-                    lambda: repair_planner_agent, name="RepairPlannerAgent", output_response=True
-                )
-
-            builder.set_start_executor("RequestProcessor")
-            builder.add_edge("RequestProcessor", "AnomalyAgent")
-            builder.add_edge("AnomalyAgent", "FaultAgent", condition=diagnosis_condition)
-
-            if repair_planner_url:
-                builder.add_edge("FaultAgent", "RepairPlannerAgent")
-
-            workflow = builder.build()
-            result = await workflow.run({"machine_id": machine_id, "telemetry": telemetry})
-            return result.get_outputs()
+        return outputs
     finally:
-        await credential.close()
+        pass
+
+
+def diagnosis_condition_text(text: str) -> bool:
+    """Determine if Fault Diagnosis is needed based on anomaly text output."""
+    keywords = ["critical", "warning", "high", "alert"]
+    return any(keyword in text.lower() for keyword in keywords)
