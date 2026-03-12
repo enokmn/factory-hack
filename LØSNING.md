@@ -461,6 +461,18 @@ aspire run
 3. Se workflow-pipelinen kjøre gjennom alle 5 agenter
 4. Åpne Aspire Dashboard for å se traces, logger og ressursstatus
 
+### Verifisert resultat — alle 5 agenter end-to-end ✅
+
+Testet med `POST /api/analyze_machine` (machine-001, curing_temperature=179.2, cycle_time=14.5):
+
+| Agent | Resultat |
+|-------|----------|
+| AnomalyClassificationAgent | status: medium, 2 warnings (temp 179.2>178, cycle 14.5>14) |
+| FaultDiagnosisAgent | curing_temperature_excessive, root cause: Heating element malfunction, Severity: High |
+| RepairPlannerAgent | Work order wo-2026-*, tech: John Smith, 90 min, 7 tasks, Cosmos DB tools |
+| MaintenanceSchedulerAgent | Risk 75/100, failure prob 62%, URGENT, neste nattvindu |
+| PartsOrderingAgent | Deler på lager, ingen bestilling nødvendig |
+
 ### Nøkkelpunkter
 - **Aspire AppHost** bruker fil-basert SDK (`#:sdk Aspire.AppHost.Sdk@13.1.0`) — .NET 10-feature
 - **A2A-protokoll** for polyglot agent-kommunikasjon (Python ↔ .NET)
