@@ -398,13 +398,112 @@ Se traces i Azure AI Foundry:
 
 ---
 
+## Challenge 4: End-to-End Agent Workflow med Aspire ✅
+
+### Oversikt
+Multi-agent orkestrering med .NET Aspire — kjører alle 5 agenter i en samlet workflow med web-UI, Aspire Dashboard for observability, og A2A (Agent-to-Agent) kommunikasjon mellom Python- og .NET-agenter.
+
+### Arkitektur
+```
+Frontend (React/Vite) → .NET Workflow (Aspire) → Agenter:
+  1. AnomalyClassificationAgent (Azure AI Foundry, MCP)
+  2. FaultDiagnosisAgent (Azure AI Foundry, MCP + AI Search)
+  3. RepairPlannerAgent (.NET, lokal A2A, Cosmos DB)
+  4. MaintenanceSchedulerAgent (Python, lokal A2A, Cosmos DB)
+  5. PartsOrderingAgent (Python, lokal A2A, Cosmos DB)
+```
+
+### Task 1: Installere Aspire CLI lokalt (macOS)
+
+```bash
+# Installer Aspire CLI som dotnet global tool
+dotnet tool install -g aspire.cli
+
+# Sett DOTNET_ROOT (nødvendig for brew-installert .NET på macOS)
+export DOTNET_ROOT=/opt/homebrew/Cellar/dotnet/10.0.103/libexec
+export PATH="$PATH:/Users/enokmn/.dotnet/tools"
+
+# Verifiser
+aspire --version
+# 13.1.2+895a2f0b09d747a052aaaf0273d55ad0e2dc95b0
+```
+
+**Merk:** I Codespaces installeres Aspire automatisk via devcontainer-feature `ghcr.io/dotnet/aspire-devcontainer-feature/dotnetaspire:1`. Lokalt må man installere manuelt som over.
+
+### Task 2: Kopier .env og start Aspire
+
+```bash
+# Kopier .env til Python-appen (trenger Azure-credentials)
+cp /tmp/factory-hack/.env /tmp/factory-hack/challenge-4/agent-workflow/app/.env
+
+# Eksporter miljøvariabler
+cd /tmp/factory-hack/challenge-4/agent-workflow
+export $(cat /tmp/factory-hack/.env | xargs)
+
+# Start Aspire
+aspire run
+```
+
+**Aspire starter 3 prosesser:**
+- **app** (Python/uvicorn) — port 8000: Anomaly Classification, Fault Diagnosis, + A2A-endepunkter for Scheduler/Parts Ordering
+- **dotnetworkflow** (.NET) — dynamisk port: Repair Planner + workflow-orkestrering
+- **frontend** (React/Vite) — dynamisk port: Web-UI
+
+### Task 3-6: Bruk web-grensesnittet
+
+**Lenker (lokalt):**
+- **Frontend:** http://localhost:{vite-port} (se Aspire Dashboard for eksakt port)
+- **Aspire Dashboard:** https://localhost:17072 (med login-token fra output)
+
+**Steg:**
+1. Åpne Frontend-lenken i nettleseren
+2. Klikk "Trigger Anomaly"
+3. Se workflow-pipelinen kjøre gjennom alle 5 agenter
+4. Åpne Aspire Dashboard for å se traces, logger og ressursstatus
+
+### Nøkkelpunkter
+- **Aspire AppHost** bruker fil-basert SDK (`#:sdk Aspire.AppHost.Sdk@13.1.0`) — .NET 10-feature
+- **A2A-protokoll** for polyglot agent-kommunikasjon (Python ↔ .NET)
+- **OpenTelemetry** traces eksporteres til Aspire Dashboard + Application Insights
+- Hele workflowen er sekvensiell: output fra én agent → input til neste
+- `TextOnlyAgentExecutor` stripper MCP tool history mellom agenter (workaround for SDK-deserialiseringsissues)
+
+### Bugfix: Blank frontend (VITE_API_URL)
+
+Frontenden viste blank side fordi `VITE_API_URL` ble satt til C#-typenavnet `Aspire.Hosting.ApplicationModel.EndpointReference` i stedet for en faktisk URL.
+
+**Årsak:** `apphost.cs` brukte `apiEndpoint.ToString()` inne i en lambda, men `EndpointReference.ToString()` returnerer typenavnet — ikke den resolvede URL-en.
+
+**Fix i `apphost.cs`:** Erstattet lambda med `ReferenceExpression`:
+```csharp
+// FØR (feil — gir "Aspire.Hosting.ApplicationModel.EndpointReference/"):
+.WithEnvironment("VITE_API_URL", () =>
+{
+    var baseUrl = (apiEndpoint.ToString() ?? ...).TrimEnd('/');
+    return $"{baseUrl}/";
+})
+
+// ETTER (riktig — Aspire resolver endepunktet korrekt):
+.WithEnvironment("VITE_API_URL", ReferenceExpression.Create($"{apiEndpoint}/"))
+```
+
+### Feilsøking
+- **Blank frontend:** Se bugfixen over — `VITE_API_URL` må bruke `ReferenceExpression`, ikke `.ToString()`
+- **`aspire` not found:** `dotnet tool install -g aspire.cli` + sett PATH
+- **DOTNET_ROOT mangler:** `export DOTNET_ROOT=/opt/homebrew/Cellar/dotnet/10.0.103/libexec`
+- **401/PermissionDenied:** Kjør `az login --use-device-code` på nytt
+- **Port 5231 i bruk (VS Code):** Aspire bruker dynamiske porter — sjekk Dashboard for riktige URLer
+
+---
+
 ## Oppsummering
 
-| Challenge | Status | Agenter opprettet |
+| Challenge | Status | Agenter/Komponenter |
 |-----------|--------|-------------------|
-| 0: Environment Setup | ✅ | - |
+| 0: Environment Setup | ✅ | Azure-ressurser, Cosmos DB, APIM, seed data |
 | 1: Anomaly & Fault Diagnosis | ✅ | AnomalyClassificationAgent, FaultDiagnosisAgent |
 | 2: Repair Planner (.NET) | ✅ | RepairPlannerAgent |
 | 3: Scheduler & Parts Ordering | ✅ | MaintenanceSchedulerAgent, PartsOrderingAgent |
+| 4: End-to-End Workflow | ✅ | Aspire host, React frontend, A2A, OpenTelemetry |
 
-**Totalt 5 agenter** opprettet og fungerende i Azure AI Foundry.
+**Totalt 5 agenter** opprettet og fungerende i Azure AI Foundry, orkestrert via Aspire workflow.
